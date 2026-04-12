@@ -1,0 +1,243 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0a0f1d;
+  --bg-soft: #10182a;
+  --fg: #d9e3f4;
+  --surface: #111a2d;
+  --surface-muted: #17233a;
+  --surface-subtle: #1f2f4a;
+  --border: rgba(123, 152, 197, 0.25);
+  --muted: #8aa4c8;
+
+  --gumloop-lime: #8cf27f;
+  --gumloop-magenta: #ff5ca8;
+  --gumloop-plum: #b679ff;
+  --gumloop-sun: #ffc463;
+
+  --success-bg: rgba(108, 232, 128, 0.18);
+  --success-fg: #95ff9d;
+  --warning-bg: rgba(255, 196, 99, 0.2);
+  --warning-fg: #ffd88b;
+  --danger-bg: rgba(255, 92, 168, 0.2);
+  --danger-fg: #ff9dca;
+
+  --shadow-floating:
+    0 0 0 1px rgba(123, 152, 197, 0.2),
+    0 6px 14px rgba(3, 10, 22, 0.4),
+    0 26px 48px rgba(3, 10, 22, 0.52);
+  --shadow-neon:
+    0 0 0 1px rgba(255, 92, 168, 0.22),
+    0 0 32px rgba(255, 92, 168, 0.18),
+    0 28px 46px rgba(6, 14, 28, 0.5);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans", sans-serif;
+  background:
+    radial-gradient(880px 600px at -10% -15%, rgba(255, 92, 168, 0.24), transparent 62%),
+    radial-gradient(880px 680px at 120% -10%, rgba(255, 196, 99, 0.2), transparent 60%),
+    linear-gradient(150deg, rgba(140, 242, 127, 0.08), transparent 35%),
+    var(--bg);
+  color: var(--fg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.app-shell {
+  max-width: 1460px;
+  position: relative;
+}
+
+.glass-panel {
+  background: linear-gradient(165deg, rgba(22, 34, 56, 0.96), rgba(15, 24, 42, 0.96));
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(12px);
+  position: relative;
+}
+
+.glass-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.12), transparent 40%, rgba(255, 92, 168, 0.08));
+  opacity: 0.42;
+}
+
+.brand-title {
+  font-family: "Outfit", sans-serif;
+  letter-spacing: -0.03em;
+  color: #f2f7ff;
+  text-shadow: 0 6px 22px rgba(255, 92, 168, 0.3);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.dot-grid {
+  background-image: radial-gradient(rgba(123, 152, 197, 0.34) 0.9px, transparent 0.9px);
+  background-size: 22px 22px;
+}
+
+.gumloop-button-shadow {
+  box-shadow:
+    inset 0 1.2px 0 rgba(255, 255, 255, 0.32),
+    0 10px 22px rgba(6, 15, 30, 0.4),
+    0 0 0 1px rgba(113, 163, 219, 0.28);
+  transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+.btn-primary {
+  color: white;
+  border: 1px solid rgba(255, 92, 168, 0.5);
+  background: linear-gradient(180deg, #ff75b6, #cf2f82);
+  text-shadow: 0 1px 0 rgba(24, 3, 15, 0.35);
+}
+
+.btn-secondary {
+  color: white;
+  border: 1px solid rgba(255, 196, 99, 0.5);
+  background: linear-gradient(180deg, #ffc463, #c78322);
+  text-shadow: 0 1px 0 rgba(35, 21, 2, 0.35);
+}
+
+.btn-tertiary {
+  color: #dce8fb;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(32, 48, 75, 0.8), rgba(26, 39, 62, 0.9));
+}
+
+.app-input {
+  border: 1px solid var(--border);
+  background: rgba(20, 30, 48, 0.76);
+  color: #e6eefc;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.app-input:focus {
+  outline: none;
+  border-color: rgba(255, 92, 168, 0.62);
+  box-shadow:
+    0 0 0 3px rgba(255, 92, 168, 0.16),
+    0 0 20px rgba(255, 92, 168, 0.1);
+}
+
+.assistant-bubble {
+  border: 1px solid rgba(182, 121, 255, 0.4);
+  background: linear-gradient(150deg, rgba(79, 46, 112, 0.46), rgba(63, 34, 92, 0.46));
+}
+
+.user-bubble {
+  border: 1px solid rgba(109, 211, 170, 0.35);
+  background: linear-gradient(150deg, rgba(33, 78, 79, 0.4), rgba(24, 66, 76, 0.45));
+}
+
+.score-success {
+  background: color-mix(in oklab, var(--success-bg) 65%, white 35%);
+  color: var(--success-fg);
+}
+
+.score-warning {
+  background: color-mix(in oklab, var(--warning-bg) 65%, white 35%);
+  color: var(--warning-fg);
+}
+
+.score-danger {
+  background: color-mix(in oklab, var(--danger-bg) 65%, white 35%);
+  color: var(--danger-fg);
+}
+
+.score-idle {
+  background: rgba(28, 43, 68, 0.6);
+  color: var(--muted);
+}
+
+::selection {
+  background: rgba(255, 92, 168, 0.3);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(255, 173, 214, 0.9), rgba(190, 63, 131, 0.9));
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(17, 27, 45, 0.24);
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.luxury-kicker {
+  font-family: "Outfit", sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 186, 223, 0.9);
+}
+
+.serif-touch {
+  font-family: "DM Serif Display", serif;
+}
+
+.stat-chip {
+  border: 1px solid rgba(206, 138, 184, 0.45);
+  background: rgba(19, 31, 52, 0.72);
+  color: #ffe0f1;
+}
+
+.report-card {
+  border: 1px solid rgba(206, 138, 184, 0.35);
+  background: linear-gradient(180deg, rgba(20, 31, 51, 0.92), rgba(14, 24, 42, 0.92));
+  box-shadow: 0 16px 30px rgba(7, 14, 28, 0.4);
+}
+
+.app-shell .text-slate-900 {
+  color: #f2f7ff !important;
+}
+
+.app-shell .text-slate-800 {
+  color: #e6eefb !important;
+}
+
+.app-shell .text-slate-700 {
+  color: #d2def3 !important;
+}
+
+.app-shell .text-slate-600,
+.app-shell .text-slate-500 {
+  color: #95add0 !important;
+}
+
+.app-shell .bg-white {
+  background: rgba(24, 37, 60, 0.9) !important;
+}
+
+.app-shell .border-\[var\(--border\)\] {
+  border-color: var(--border) !important;
+}

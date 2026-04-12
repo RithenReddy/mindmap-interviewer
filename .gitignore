@@ -1,0 +1,15 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+.env
+.env.*
+
+.gumloop_tokens.json
+.gumloop_oauth_session.json
+
+web/node_modules/
+web/dist/
