@@ -38,6 +38,34 @@ const withTimeout = (promise, ms) =>
     }),
   ]);
 
+const buildReplayAnswer = (question, turnIndex) => {
+  const q = String(question || "").toLowerCase();
+  if (q.includes("prep") || q.includes("highlight") || q.includes("evaluate")) {
+    return "Prep has focused on PLG funnel diagnosis, positioning clarity, and metric discipline. Please evaluate my trade-off quality and how clearly I connect marketing actions to business outcomes.";
+  }
+  if (q.includes("concrete decision") || (q.includes("trade-off") && q.includes("outcome"))) {
+    return "At my previous company, I prioritized activation-rate improvement over top-of-funnel spend. The trade-off was slower lead growth in the short term, but activation rose by 18% and CAC efficiency improved over two cycles.";
+  }
+  if (q.includes("positioning") || q.includes("zapier") || q.includes("make.com") || q.includes("competitor")) {
+    return "I would position Gumloop as outcome-first automation with stronger reliability and control than template-heavy tools. I would validate this through win-loss interviews, message testing, and persona-specific proof points.";
+  }
+  if (q.includes("budget") || q.includes("channel") || q.includes("cac")) {
+    return "I allocate by expected payback period, CAC trend, and activation quality. I protect high-intent channels first, then scale only where retention-adjusted conversion remains healthy.";
+  }
+  if (q.includes("experiment") || q.includes("metric") || q.includes("success")) {
+    return "First experiment would reduce onboarding friction at the highest drop-off point. Success metric is activation lift with stable downstream retention quality over two cohorts.";
+  }
+  if (q.includes("messaging") || q.includes("technical capabilities")) {
+    return "I translate technical capability into business language by mapping feature to pain point, measurable impact, and proof. For non-technical stakeholders, I focus on outcomes, risk reduction, and implementation speed.";
+  }
+  const fallback = [
+    "I prioritize by business impact, speed of learning, and execution feasibility across product and marketing.",
+    "I define clear hypotheses, expected lift ranges, and decision thresholds before scaling any channel investment.",
+    "I align teams on one north-star metric plus guardrails so experimentation stays fast but controlled.",
+  ];
+  return fallback[(turnIndex - 1) % fallback.length];
+};
+
 function createTypingTelemetry() {
   return {
     startedAt: 0,
@@ -97,6 +125,8 @@ export default function App({ replayMode = false }) {
     cursorDown: false,
   });
   const replayStartedRef = useRef(false);
+  const messagesRef = useRef([]);
+  const sessionRef = useRef(null);
 
   const sessionComplete = Boolean(session?.session_complete);
 
@@ -104,6 +134,14 @@ export default function App({ replayMode = false }) {
     document.documentElement.setAttribute("data-theme", theme);
     window.localStorage.setItem("mmi_theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   useEffect(() => {
     if (!replayMode || replayStartedRef.current) return;
@@ -210,7 +248,7 @@ export default function App({ replayMode = false }) {
       setReplayState((prev) => ({ ...prev, status: "Stage 3/5: Adaptive interview + concept updates..." }));
       await moveCursorTo("chat-input", true);
       await sendResponseWithText(
-        "I start by segmenting acquisition to activation to retention, identify the largest drop-off, and prioritize experiments by expected revenue impact and confidence.",
+        "Prep has been focused on PLG diagnostics and positioning clarity. Please push on my trade-off quality, decision structure, and how I connect marketing activity to measurable business outcomes.",
         null,
         replaySessionId
       );
@@ -219,7 +257,7 @@ export default function App({ replayMode = false }) {
       setReplayState((prev) => ({ ...prev, status: "Stage 4/5: Integrity signal event triggered..." }));
       await moveCursorTo("chat-input", true);
       await sendResponseWithText(
-        "I would run a focused experiment sequence across onboarding friction, activation nudges, and intent-qualified pricing page messaging with strict success thresholds.",
+        "One concrete decision I made was prioritizing activation-rate improvement over top-of-funnel spend. Trade-off was slower lead growth in the short term, but activation rose by 18% and CAC efficiency improved over two cycles.",
         {
           char_count: 210,
           key_count: 18,
@@ -234,10 +272,14 @@ export default function App({ replayMode = false }) {
       );
 
       let completed = false;
-      for (let i = 0; i < 6; i += 1) {
+      for (let i = 1; i <= 6; i += 1) {
         await demoDelay(220);
+        const latestQuestion = [...messagesRef.current]
+          .reverse()
+          .find((msg) => msg.role === "assistant")?.content;
+        const nextAnswer = buildReplayAnswer(latestQuestion, i);
         const response = await sendResponseWithText(
-          "I allocate spend across channels using expected payback period, CAC trend, and quality of conversion into activation and retention.",
+          nextAnswer,
           null,
           replaySessionId
         );
@@ -249,8 +291,11 @@ export default function App({ replayMode = false }) {
 
       if (!completed) {
         await demoDelay(260);
+        const latestQuestion = [...messagesRef.current]
+          .reverse()
+          .find((msg) => msg.role === "assistant")?.content;
         await sendResponseWithText(
-          "Under constrained budget, I protect high-intent channels first and use fast feedback loops for message-channel fit.",
+          buildReplayAnswer(latestQuestion, 7),
           null,
           replaySessionId
         );

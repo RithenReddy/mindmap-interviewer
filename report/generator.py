@@ -393,11 +393,128 @@ def _call_gumloop_report(payload: dict) -> tuple[str, str]:
     return "", last_error or "unknown_error"
 
 
+def _call_anthropic_report(prompt: str) -> tuple[str, str]:
+    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        return "", "missing_anthropic_key"
+
+    try:
+        from anthropic import Anthropic
+    except Exception as exc:
+        return "", f"anthropic_import_failed:{exc}"
+
+    client = Anthropic(api_key=api_key)
+    schema_hint = json.dumps(REPORT_SCHEMA_TEMPLATE, ensure_ascii=True)
+    models = [
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-haiku-20241022",
+        "claude-3-haiku-20240307",
+    ]
+    last_error = ""
+    for model in models:
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=1600,
+                temperature=0.2,
+                system=(
+                    "You are an interview evaluator. Return ONLY valid JSON."
+                    " Do not include markdown fences."
+                    f" JSON schema: {schema_hint}"
+                ),
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text_blocks = [
+                block.text for block in response.content if getattr(block, "type", "") == "text"
+            ]
+            text = "\n".join(text_blocks).strip()
+            if text:
+                return text, f"anthropic_model:{model}"
+            last_error = f"empty_response:{model}"
+        except Exception as exc:
+            last_error = f"{model}:{exc}"
+            continue
+    return "", last_error or "anthropic_unknown_error"
+
+
 def _coerce_to_report_json(agent, raw_report: str) -> dict:
     parsed = _extract_json_object_from_text(raw_report)
     if parsed:
         return _normalize_report_json(parsed)
     return _normalize_report_json(None)
+
+
+def _matrix_row_is_placeholder(row: dict) -> bool:
+    concept = str(row.get("concept", "")).strip().lower()
+    evidence = str(row.get("evidence", "")).strip().lower()
+    if concept in {"", "-", "n/a", "none", "null"}:
+        return True
+    if evidence in {"", "-", "n/a", "none", "null", "unexplored"}:
+        return True
+    return False
+
+
+def _repair_report_json(agent, report_json: dict) -> dict:
+    repaired = _normalize_report_json(report_json)
+    fallback = _local_template_report(agent, "")
+    fallback_matrix = fallback.get("concept_matrix", [])
+    current_matrix = repaired.get("concept_matrix", [])
+    placeholder_count = sum(1 for row in current_matrix if isinstance(row, dict) and _matrix_row_is_placeholder(row))
+    matrix_is_poor = (
+        not isinstance(current_matrix, list)
+        or not current_matrix
+        or placeholder_count >= max(2, int(len(current_matrix) * 0.5))
+    )
+
+    if matrix_is_poor and fallback_matrix:
+        repaired["concept_matrix"] = fallback_matrix
+    elif isinstance(current_matrix, list) and fallback_matrix:
+        enriched_matrix: list[dict] = []
+        for idx, row in enumerate(current_matrix):
+            if not isinstance(row, dict):
+                row = {}
+            fallback_row = fallback_matrix[idx] if idx < len(fallback_matrix) else {}
+            concept_val = str(row.get("concept", "")).strip()
+            depth_val = str(row.get("depth", "")).strip()
+            confidence_val = str(row.get("confidence", "")).strip()
+            verdict_val = str(row.get("verdict", "")).strip()
+            if concept_val in {"", "-", "n/a", "none", "null"}:
+                row["concept"] = fallback_row.get("concept", "")
+            if depth_val in {"", "-", "n/a", "none", "null"}:
+                row["depth"] = fallback_row.get("depth", "")
+            if confidence_val in {"", "-", "none", "null"}:
+                row["confidence"] = fallback_row.get("confidence", "")
+            if verdict_val in {"", "-", "n/a", "none", "null"}:
+                row["verdict"] = fallback_row.get("verdict", "")
+            if not str(row.get("evidence", "")).strip():
+                row["evidence"] = fallback_row.get("evidence", "")
+            enriched_matrix.append(row)
+        repaired["concept_matrix"] = _normalize_list_of_dicts(
+            enriched_matrix, ["concept", "depth", "confidence", "evidence", "verdict"]
+        )
+
+    snapshot = repaired.get("score_snapshot", {})
+    fallback_snapshot = fallback.get("score_snapshot", {})
+    for key in ["concept_coverage", "average_depth", "average_confidence", "signal_quality"]:
+        if not str(snapshot.get(key, "")).strip():
+            snapshot[key] = fallback_snapshot.get(key, "")
+    repaired["score_snapshot"] = snapshot
+
+    for key in ["strengths", "gaps", "follow_ups"]:
+        values = repaired.get(key, [])
+        if not isinstance(values, list) or not any(str(item).strip() for item in values):
+            repaired[key] = fallback.get(key, [])
+
+    rec = repaired.get("recommendation", {})
+    fallback_rec = fallback.get("recommendation", {})
+    for key in ["decision", "confidence", "rationale"]:
+        if not str(rec.get(key, "")).strip():
+            rec[key] = fallback_rec.get(key, "")
+    repaired["recommendation"] = rec
+
+    if not str(repaired.get("overall_assessment", "")).strip():
+        repaired["overall_assessment"] = fallback.get("overall_assessment", "")
+    return repaired
 
 
 def _local_template_report(agent, fallback_reason: str = "") -> dict:
@@ -412,21 +529,24 @@ def _local_template_report(agent, fallback_reason: str = "") -> dict:
     matrix: list[dict] = []
     for concept in sorted(concepts, key=lambda c: c.depth_score, reverse=True)[:12]:
         evidence = ""
+        confidence_text = ""
         for turn in reversed(agent.session_data):
             for assessed in turn.get("concepts_assessed", []):
                 if isinstance(assessed, dict) and assessed.get("concept_id") == concept.id:
                     evidence = str(assessed.get("evidence", "")).strip()
                     conf = assessed.get("confidence_score")
+                    band = str(assessed.get("confidence_band", "")).strip()
                     if isinstance(conf, (int, float)):
                         confidence_values.append(float(conf))
+                        confidence_text = f"{band or 'scored'} ({round(float(conf), 2)})"
                     break
             if evidence:
                 break
         matrix.append(
             {
-                "concept": concept.name,
+                "concept": concept.name or concept.id,
                 "depth": str(concept.depth_score),
-                "confidence": "n/a",
+                "confidence": confidence_text or "n/a",
                 "evidence": evidence or "Insufficient evidence",
                 "verdict": (
                     "strong"
@@ -497,7 +617,7 @@ def generate_report(agent) -> dict:
     }
     gumloop_report, gumloop_meta = _call_gumloop_report(payload)
     if gumloop_report:
-        report_json = _coerce_to_report_json(agent, gumloop_report)
+        report_json = _repair_report_json(agent, _coerce_to_report_json(agent, gumloop_report))
         if not report_json.get("overall_assessment"):
             report_json = _local_template_report(agent, "Gumloop returned non-JSON report payload.")
         return {
@@ -507,10 +627,24 @@ def generate_report(agent) -> dict:
             "meta": gumloop_meta,
         }
 
-    report_json = _local_template_report(agent, gumloop_meta)
+    anthropic_report, anthropic_meta = _call_anthropic_report(prompt)
+    if anthropic_report:
+        report_json = _repair_report_json(agent, _coerce_to_report_json(agent, anthropic_report))
+        if report_json.get("overall_assessment"):
+            return {
+                "content": _report_json_to_markdown(report_json),
+                "json": report_json,
+                "source": "anthropic_fallback",
+                "meta": anthropic_meta,
+            }
+
+    fallback_reason = "; ".join(
+        part for part in [f"gumloop={gumloop_meta}", f"anthropic={anthropic_meta}"] if part
+    )
+    report_json = _local_template_report(agent, fallback_reason)
     return {
         "content": _report_json_to_markdown(report_json),
         "json": report_json,
         "source": "local_template_fallback",
-        "meta": gumloop_meta,
+        "meta": fallback_reason,
     }
