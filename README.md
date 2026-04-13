@@ -11,7 +11,6 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --reload
 Required env vars:
 
 - `ANTHROPIC_API_KEY`
-- `GUMLOOP_MCP_TOKEN` (needed for Apollo + Firecrawl scrape)
 
 ## Run Frontend
 
@@ -45,9 +44,3 @@ This repo is configured with `vercel.json` so one Vercel project serves both:
 
 - Frontend automatically calls same-origin API in production, so `VITE_API_BASE` is optional on Vercel.
 - Do not add secrets with `VITE_` prefix.
-- Gumloop variables are optional and only needed if you want live Apollo/Firecrawl scraping or Gumloop agent paths:
-  - `GUMLOOP_MCP_TOKEN`
-  - `GUMLOOP_API_KEY`
-  - `GUMLOOP_USER_ID`
-  - `GUMLOOP_INTERVIEW_AGENT_ID`
-  - `GUMLOOP_REPORT_AGENT_ID`
