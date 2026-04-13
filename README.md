@@ -37,11 +37,6 @@ This repo is configured with `vercel.json` so one Vercel project serves both:
 2. Keep root directory as repository root (`mindmap-interviewer`).
 3. Add environment variables (Production + Preview):
    - `ANTHROPIC_API_KEY`
-   - `GUMLOOP_MCP_TOKEN`
-   - `GUMLOOP_API_KEY`
-   - `GUMLOOP_USER_ID`
-   - `GUMLOOP_INTERVIEW_AGENT_ID`
-   - `GUMLOOP_REPORT_AGENT_ID` (optional)
    - `ENABLE_SLACK_CONTEXT=1`
    - `SLACK_CONTEXT_MODE=mock`
 4. Deploy.
@@ -50,3 +45,9 @@ This repo is configured with `vercel.json` so one Vercel project serves both:
 
 - Frontend automatically calls same-origin API in production, so `VITE_API_BASE` is optional on Vercel.
 - Do not add secrets with `VITE_` prefix.
+- Gumloop variables are optional and only needed if you want live Apollo/Firecrawl scraping or Gumloop agent paths:
+  - `GUMLOOP_MCP_TOKEN`
+  - `GUMLOOP_API_KEY`
+  - `GUMLOOP_USER_ID`
+  - `GUMLOOP_INTERVIEW_AGENT_ID`
+  - `GUMLOOP_REPORT_AGENT_ID`
