@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "./api";
 import ConceptGraph from "./components/ConceptGraph";
@@ -17,6 +17,27 @@ const DOMAINS = [
   },
 ];
 
+const REPLAY_LINKEDIN_URL = "https://www.linkedin.com/in/nitprashant/";
+const REPLAY_JOB_URL = "https://jobs.ashbyhq.com/gumloop/f969a8ad-3ac6-4469-8e49-58124ff05352";
+const REPLAY_CANDIDATE_CONTEXT = `Name: Prashant (from LinkedIn)
+Background: Product and growth-oriented profile with execution across GTM, cross-functional collaboration, and analytical decision making.
+Focus areas: product storytelling, growth loops, and business communication.
+Source: ${REPLAY_LINKEDIN_URL}`;
+const REPLAY_JOB_DESCRIPTION = `Role: Head of Marketing at Gumloop
+Source URL: ${REPLAY_JOB_URL}
+Scope:
+- Own positioning, demand generation, and PLG growth loops
+- Build messaging that translates technical capabilities into business outcomes
+- Prioritize channels and budget allocation based on measurable ROI
+- Partner closely with product and engineering on launch and adoption strategy`;
+const withTimeout = (promise, ms) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("timeout")), ms);
+    }),
+  ]);
+
 function createTypingTelemetry() {
   return {
     startedAt: 0,
@@ -30,7 +51,9 @@ function createTypingTelemetry() {
   };
 }
 
-export default function App() {
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export default function App({ replayMode = false }) {
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [jobUrl, setJobUrl] = useState("");
   const [jobDescription, setJobDescription] = useState("");
@@ -54,8 +77,201 @@ export default function App() {
   const [currentView, setCurrentView] = useState("onboarding");
   const [typingTelemetry, setTypingTelemetry] = useState(createTypingTelemetry());
   const [lastAssistantAt, setLastAssistantAt] = useState(Date.now());
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === "undefined") return "dark";
+    const saved = window.localStorage.getItem("mmi_theme");
+    if (saved === "dark" || saved === "light") return saved;
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  });
+  const [showIntro, setShowIntro] = useState(() => {
+    if (typeof window === "undefined") return false;
+    if (replayMode) return false;
+    return window.localStorage.getItem("mmi_intro_seen") !== "1";
+  });
+  const [replayState, setReplayState] = useState({
+    running: false,
+    status: "",
+    cursorVisible: false,
+    cursorX: 120,
+    cursorY: 90,
+    cursorDown: false,
+  });
+  const replayStartedRef = useRef(false);
 
   const sessionComplete = Boolean(session?.session_complete);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    window.localStorage.setItem("mmi_theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (!replayMode || replayStartedRef.current) return;
+    replayStartedRef.current = true;
+    const run = async () => {
+      const demoDelay = (ms) => wait(Math.max(40, Math.floor(ms / 2.6)));
+
+      const moveCursorTo = async (id, click = false, pause = 180) => {
+        const element = document.querySelector(`[data-replay-id="${id}"]`);
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          setReplayState((prev) => ({
+            ...prev,
+            cursorVisible: true,
+            cursorX: rect.left + rect.width / 2,
+            cursorY: rect.top + rect.height / 2,
+            cursorDown: click,
+          }));
+          await demoDelay(pause);
+          if (click) {
+            setReplayState((prev) => ({ ...prev, cursorDown: false }));
+            await demoDelay(120);
+          }
+        }
+      };
+
+      const typeText = async (setter, value) => {
+        for (let i = 1; i <= value.length; i += 1) {
+          setter(value.slice(0, i));
+          await demoDelay(20);
+        }
+      };
+
+      setReplayState((prev) => ({ ...prev, running: true, status: "Stage 1/5: Source onboarding..." }));
+      setCurrentView("onboarding");
+      setOnboardingStep(1);
+      setLinkedinUrl("");
+      setJobUrl("");
+      setJobDescription("");
+      setCandidateContext("");
+      setInput("");
+      setReport("");
+      setReportData(null);
+      setReportSource("");
+      setMessages([]);
+      setSession(null);
+      setSessionId("");
+      await demoDelay(260);
+
+      await moveCursorTo("linkedin-url", true);
+      await typeText(setLinkedinUrl, REPLAY_LINKEDIN_URL);
+      await moveCursorTo("job-url", true);
+      await typeText(setJobUrl, REPLAY_JOB_URL);
+
+      await moveCursorTo("continue-review-btn", true);
+      setOnboardingStep(2);
+      setReplayState((prev) => ({
+        ...prev,
+        status: "Step 2/5: Fetching live scrape data and auto-filling context...",
+      }));
+      await demoDelay(140);
+      let replayJob = REPLAY_JOB_DESCRIPTION;
+      let replayCandidate = REPLAY_CANDIDATE_CONTEXT;
+      try {
+        const scrapeResponse = await withTimeout(
+          api.scrape({
+            linkedin_url: REPLAY_LINKEDIN_URL,
+            job_url: REPLAY_JOB_URL,
+          }),
+          2400
+        );
+        const data = scrapeResponse?.data || {};
+        replayJob = (data.job_description || "").trim() || REPLAY_JOB_DESCRIPTION;
+        replayCandidate = (data.candidate_context || "").trim() || REPLAY_CANDIDATE_CONTEXT;
+        setReplayState((prev) => ({
+          ...prev,
+          status: "Step 2/5: Scrape returned. Auto-filling context...",
+        }));
+      } catch (_error) {
+        setReplayState((prev) => ({
+          ...prev,
+          status: "Step 2/5: Live scrape delayed. Continuing with curated context fallback...",
+        }));
+      }
+      await moveCursorTo("candidate-context-textarea", true, 90);
+      setCandidateContext(replayCandidate);
+      await moveCursorTo("job-description-textarea", true, 90);
+      setJobDescription(replayJob);
+      await demoDelay(100);
+      await moveCursorTo("begin-interview-btn", true);
+      setReplayState((prev) => ({ ...prev, status: "Stage 2/5: Priming adaptive interview..." }));
+      const startResponse = await startInterviewWithContent(replayJob, replayCandidate);
+      const replaySessionId = startResponse?.session?.session_id || "";
+      if (!replaySessionId) {
+        setReplayState((prev) => ({
+          ...prev,
+          running: false,
+          status: "Replay stopped: interview session could not be created.",
+        }));
+        return;
+      }
+      await demoDelay(600);
+
+      setReplayState((prev) => ({ ...prev, status: "Stage 3/5: Adaptive interview + concept updates..." }));
+      await moveCursorTo("chat-input", true);
+      await sendResponseWithText(
+        "I start by segmenting acquisition to activation to retention, identify the largest drop-off, and prioritize experiments by expected revenue impact and confidence.",
+        null,
+        replaySessionId
+      );
+      await demoDelay(480);
+
+      setReplayState((prev) => ({ ...prev, status: "Stage 4/5: Integrity signal event triggered..." }));
+      await moveCursorTo("chat-input", true);
+      await sendResponseWithText(
+        "I would run a focused experiment sequence across onboarding friction, activation nudges, and intent-qualified pricing page messaging with strict success thresholds.",
+        {
+          char_count: 210,
+          key_count: 18,
+          backspace_count: 1,
+          paste_count: 1,
+          pasted_chars: 185,
+          typing_duration_ms: 1250,
+          response_latency_ms: 900,
+          avg_inter_key_ms: 22,
+        },
+        replaySessionId
+      );
+
+      let completed = false;
+      for (let i = 0; i < 6; i += 1) {
+        await demoDelay(220);
+        const response = await sendResponseWithText(
+          "I allocate spend across channels using expected payback period, CAC trend, and quality of conversion into activation and retention.",
+          null,
+          replaySessionId
+        );
+        if (response?.session?.session_complete) {
+          completed = true;
+          break;
+        }
+      }
+
+      if (!completed) {
+        await demoDelay(260);
+        await sendResponseWithText(
+          "Under constrained budget, I protect high-intent channels first and use fast feedback loops for message-channel fit.",
+          null,
+          replaySessionId
+        );
+      }
+
+      await demoDelay(460);
+      setReplayState((prev) => ({ ...prev, status: "Stage 5/5: Generating final explainable report..." }));
+      await moveCursorTo("generate-report-btn", true);
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+      await demoDelay(500);
+      await fetchReportForSession(replaySessionId);
+      await refreshActivity();
+      await demoDelay(420);
+      setReplayState((prev) => ({
+        ...prev,
+        running: false,
+        status: "Replay complete. Full product flow showcased.",
+      }));
+    };
+    run();
+  }, [replayMode]);
 
   async function primeInterview(jobText, candidateText, successNote) {
     const response = await api.startInterview({
@@ -85,6 +301,7 @@ export default function App() {
     setLastAssistantAt(Date.now());
     setNote(successNote);
     setNoteType("success");
+    return response;
   }
 
   function friendlyError(error) {
@@ -134,29 +351,40 @@ export default function App() {
     }
   }
 
+  async function startInterviewWithContent(jobText, candidateText) {
+    if (!jobText.trim()) {
+      setNote("Job description is required.");
+      setNoteType("error");
+      return null;
+    }
+    setBusy(true);
+    setActionLabel("Applying edits and regenerating first question...");
+    setNote("");
+    try {
+      const response = await primeInterview(
+        jobText,
+        candidateText,
+        "Interview started. First question is ready."
+      );
+      setCurrentView("interview");
+      return response;
+    } catch (error) {
+      setNote(friendlyError(error));
+      setNoteType("error");
+      return null;
+    } finally {
+      setBusy(false);
+      setActionLabel("");
+    }
+  }
+
   async function startInterview() {
     if (!jobDescription.trim()) {
       setNote("Job description is required.");
       setNoteType("error");
       return;
     }
-    setBusy(true);
-    setActionLabel("Applying edits and regenerating first question...");
-    setNote("");
-    try {
-      await primeInterview(
-        jobDescription,
-        candidateContext,
-        "Interview started. First question is ready."
-      );
-      setCurrentView("interview");
-    } catch (error) {
-      setNote(friendlyError(error));
-      setNoteType("error");
-    } finally {
-      setBusy(false);
-      setActionLabel("");
-    }
+    await startInterviewWithContent(jobDescription, candidateContext);
   }
 
   async function startDemoReplay() {
@@ -199,14 +427,15 @@ export default function App() {
     }
   }
 
-  async function sendResponse() {
-    if (!sessionId || !input.trim()) return;
-    const userMessage = input.trim();
+  async function sendResponseWithText(text, telemetryOverride = null, sessionIdOverride = "") {
+    const activeSessionId = sessionIdOverride || sessionId;
+    if (!activeSessionId || !String(text || "").trim()) return null;
+    const userMessage = String(text).trim();
     const now = Date.now();
     const intervals = typingTelemetry.intervals || [];
     const avgInterKeyMs =
       intervals.length > 0 ? intervals.reduce((sum, value) => sum + value, 0) / intervals.length : 0;
-    const telemetryPayload = {
+    const telemetryPayload = telemetryOverride || {
       char_count: userMessage.length,
       key_count: typingTelemetry.keyCount,
       backspace_count: typingTelemetry.backspaceCount,
@@ -226,7 +455,7 @@ export default function App() {
     setActionLabel("Analyzing answer and preparing next question...");
     try {
       const response = await api.respondInterview({
-        session_id: sessionId,
+        session_id: activeSessionId,
         response: userMessage,
         telemetry: telemetryPayload,
       });
@@ -254,9 +483,37 @@ export default function App() {
         ]);
         setLastAssistantAt(Date.now());
       }
+      return response;
     } catch (error) {
       setNote(friendlyError(error));
       setNoteType("error");
+      return null;
+    } finally {
+      setBusy(false);
+      setActionLabel("");
+    }
+  }
+
+  async function sendResponse() {
+    if (!input.trim()) return;
+    await sendResponseWithText(input);
+  }
+
+  async function fetchReportForSession(targetSessionId = "") {
+    const activeSessionId = targetSessionId || sessionId;
+    if (!activeSessionId) return null;
+    setBusy(true);
+    setActionLabel("Generating final evaluation report...");
+    try {
+      const response = await api.getReport(activeSessionId);
+      setReport(response.report || "");
+      setReportData(response.report_data || null);
+      setReportSource(response.report_source || "");
+      return response;
+    } catch (error) {
+      setNote(friendlyError(error));
+      setNoteType("error");
+      return null;
     } finally {
       setBusy(false);
       setActionLabel("");
@@ -264,21 +521,7 @@ export default function App() {
   }
 
   async function fetchReport() {
-    if (!sessionId) return;
-    setBusy(true);
-    setActionLabel("Generating final evaluation report...");
-    try {
-      const response = await api.getReport(sessionId);
-      setReport(response.report || "");
-      setReportData(response.report_data || null);
-      setReportSource(response.report_source || "");
-    } catch (error) {
-      setNote(friendlyError(error));
-      setNoteType("error");
-    } finally {
-      setBusy(false);
-      setActionLabel("");
-    }
+    await fetchReportForSession();
   }
 
   async function refreshActivity() {
@@ -307,6 +550,13 @@ export default function App() {
     setLastAssistantAt(Date.now());
   }
 
+  function dismissIntro() {
+    setShowIntro(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("mmi_intro_seen", "1");
+    }
+  }
+
   return (
     <div className="app-shell mx-auto min-h-screen px-4 py-8 md:px-8">
       <header className="glass-panel dot-grid mb-6 rounded-3xl p-7">
@@ -319,13 +569,36 @@ export default function App() {
           and evidence-backed decisions rendered in a Gumloop-style control surface.
         </p>
         <div className="mt-3 flex items-center gap-2">
+          {replayMode ? (
+            <span className="stat-chip rounded-full px-2 py-1 text-xs">
+              {replayState.status || "Curated replay mode"}
+            </span>
+          ) : null}
           <button
             type="button"
             className="btn-tertiary gumloop-button-shadow rounded-lg px-3 py-1 text-xs font-semibold"
-            onClick={refreshActivity}
+            onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
           >
-            Refresh Localhost Activity
+            {theme === "dark" ? "Light Mode" : "Dark Mode"}
           </button>
+          {!replayMode ? (
+            <button
+              type="button"
+              className="btn-tertiary gumloop-button-shadow rounded-lg px-3 py-1 text-xs font-semibold"
+              onClick={() => setShowIntro(true)}
+            >
+              What is this?
+            </button>
+          ) : null}
+          {!replayMode ? (
+            <button
+              type="button"
+              className="btn-tertiary gumloop-button-shadow rounded-lg px-3 py-1 text-xs font-semibold"
+              onClick={refreshActivity}
+            >
+              Refresh Localhost Activity
+            </button>
+          ) : null}
           <span className="stat-chip rounded-full px-2 py-1 text-xs">
             {activityEvents.length > 0 ? `${activityEvents.length} recent backend events` : "No events yet"}
           </span>
@@ -368,12 +641,14 @@ export default function App() {
                   Step 1 - Source URLs and Fetch
                 </label>
                 <input
+                  data-replay-id="linkedin-url"
                   className="app-input w-full rounded-xl px-3 py-2 text-sm"
                   placeholder="LinkedIn URL"
                   value={linkedinUrl}
                   onChange={(event) => setLinkedinUrl(event.target.value)}
                 />
                 <input
+                  data-replay-id="job-url"
                   className="app-input w-full rounded-xl px-3 py-2 text-sm"
                   placeholder="Job URL"
                   value={jobUrl}
@@ -415,6 +690,7 @@ export default function App() {
                   {busy ? "Fetching..." : "Fetch scraped content"}
                 </button>
                 <button
+                  data-replay-id="demo-replay-btn"
                   onClick={startDemoReplay}
                   disabled={busy}
                   className="btn-tertiary w-full rounded-xl px-3 py-2 text-sm font-semibold"
@@ -424,6 +700,7 @@ export default function App() {
                 <button
                   className="btn-tertiary w-full rounded-xl px-3 py-2 text-sm font-semibold"
                   type="button"
+                  data-replay-id="continue-review-btn"
                   onClick={() => setOnboardingStep(2)}
                 >
                   Continue to Review
@@ -436,12 +713,14 @@ export default function App() {
                   Step 2 - Review/Edit Content
                 </label>
                 <textarea
+                  data-replay-id="job-description-textarea"
                   className="app-input h-40 w-full rounded-xl px-3 py-2 text-sm"
                   placeholder="JD content from scrape (editable)"
                   value={jobDescription}
                   onChange={(event) => setJobDescription(event.target.value)}
                 />
                 <textarea
+                  data-replay-id="candidate-context-textarea"
                   className="app-input h-28 w-full rounded-xl px-3 py-2 text-sm"
                   placeholder="Candidate profile details from scrape (editable)"
                   value={candidateContext}
@@ -463,6 +742,7 @@ export default function App() {
                     Back
                   </button>
                   <button
+                    data-replay-id="begin-interview-btn"
                     onClick={startInterview}
                     disabled={busy || !jobDescription.trim()}
                     className="btn-primary gumloop-button-shadow w-full rounded-xl px-3 py-2 text-sm font-bold disabled:opacity-60"
@@ -476,7 +756,7 @@ export default function App() {
               onClick={resetAll}
               className="btn-tertiary w-full rounded-xl px-3 py-2 text-sm font-semibold"
             >
-              Reset Session
+              {replayMode ? "Replay Running" : "Reset Session"}
             </button>
             {note ? (
               <div
@@ -532,6 +812,7 @@ export default function App() {
                 <h2 className="text-lg font-semibold text-slate-900">Interview Chat</h2>
                 {sessionComplete ? (
                   <button
+                    data-replay-id="generate-report-btn"
                     onClick={fetchReport}
                     disabled={busy}
                     className="gumloop-button-shadow rounded-lg border border-emerald-600 bg-gradient-to-b from-emerald-500 to-emerald-600 px-3 py-1 text-xs font-bold text-white"
@@ -568,6 +849,7 @@ export default function App() {
               </div>
               <div className="mt-3 flex gap-2">
                 <input
+                  data-replay-id="chat-input"
                   className="app-input w-full rounded-xl px-3 py-2 text-sm"
                   placeholder="Your answer..."
                   value={input}
@@ -607,6 +889,7 @@ export default function App() {
                   }}
                 />
                 <button
+                  data-replay-id="send-btn"
                   onClick={sendResponse}
                   disabled={busy || !sessionId}
                   className="btn-secondary gumloop-button-shadow rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-60"
@@ -771,6 +1054,47 @@ export default function App() {
           ) : null}
         </main>
       )}
+      {showIntro ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <div className="glass-panel w-full max-w-xl rounded-2xl p-5">
+            <p className="luxury-kicker text-[10px]">Welcome</p>
+            <h2 className="mt-2 text-xl font-semibold text-slate-900">MindMap Interviewer</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              This tool runs an adaptive interview that evaluates concept depth, reasoning quality, and response integrity in real time.
+            </p>
+            <div className="mt-4 space-y-2 text-sm text-slate-600">
+              <div><span className="font-semibold text-slate-800">1. Add Sources:</span> paste candidate + role URLs.</div>
+              <div><span className="font-semibold text-slate-800">2. Review Context:</span> edit scraped profile/JD before interview.</div>
+              <div><span className="font-semibold text-slate-800">3. Interview + Report:</span> run adaptive Q&A and generate evidence-backed evaluation.</div>
+            </div>
+            <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3 text-xs text-slate-500">
+              Includes live concept graph updates, explainable reasoning traces, and integrity signals in the final report.
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn-tertiary rounded-lg px-3 py-1.5 text-xs font-semibold"
+                onClick={() => setShowIntro(false)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn-primary gumloop-button-shadow rounded-lg px-3 py-1.5 text-xs font-bold"
+                onClick={dismissIntro}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {replayMode && replayState.cursorVisible ? (
+        <div
+          className={`replay-cursor ${replayState.cursorDown ? "down" : ""}`}
+          style={{ left: `${replayState.cursorX}px`, top: `${replayState.cursorY}px`, position: "fixed", zIndex: 90 }}
+        />
+      ) : null}
     </div>
   );
 }
